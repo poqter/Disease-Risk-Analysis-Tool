@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # --- 페이지 설정 ---
 st.set_page_config(page_title="질병 위험률 분석 도구", layout="wide")
@@ -67,6 +66,10 @@ if run_analysis:
     # --- 위험률 계산 ---
     if not filtered.empty:
         st.subheader("📊 분석 결과")
+
+        # 상위 3개 질병만 선택
+        filtered = filtered.sort_values(by="위험률(1000명당)", ascending=False).head(3)
+
         for _, row in filtered.iterrows():
             disease = row["질병"]
             base_risk = row["위험률(1000명당)"]
@@ -108,15 +111,7 @@ if run_analysis:
             ---
             #### 🎯 자동 설득 멘트
             {auto_ment}
+            
             """)
-
-        # 시뮬레이션 그래프 (예: 흡연 vs 비흡연 비교)
-        st.subheader("📈 위험률 비교 시뮬레이션")
-        sim_data = filtered.groupby("흡연여부")["위험률(1000명당)"].mean().reset_index()
-        fig, ax = plt.subplots()
-        ax.bar(sim_data["흡연여부"], sim_data["위험률(1000명당)"], width=0.5)
-        ax.set_ylabel("위험률 (1000명당)")
-        ax.set_title("흡연 여부에 따른 평균 위험률 비교")
-        st.pyplot(fig)
     else:
         st.warning("❗ 입력하신 조건에 해당하는 데이터가 없습니다. 다른 조건을 시도해주세요.")
