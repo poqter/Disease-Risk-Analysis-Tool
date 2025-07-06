@@ -67,8 +67,13 @@ if run_analysis:
     if not filtered.empty:
         st.subheader("📊 분석 결과")
 
-        # 상위 3개 질병만 선택
-        filtered = filtered.sort_values(by="위험률(1000명당)", ascending=False).head(3)
+        # 상위 3개 질병만 선택 (중복 제거 포함)
+        filtered = (
+            filtered.sort_values(by="위험률(1000명당)", ascending=False)
+            .drop_duplicates(subset="질병", keep="first")
+            .head(3)
+        )
+
 
         for _, row in filtered.iterrows():
             disease = row["질병"]
