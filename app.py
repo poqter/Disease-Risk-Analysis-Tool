@@ -47,87 +47,66 @@ with st.container():
 
 # --- 결과 분석 ---
 if run_analysis:
-    filtered = df_risk[
-        (df_risk["연령대"] == age_group) &
-        (df_risk["성별"] == gender) &
-        (df_risk["흡연여부"] == smoke) &
-        (df_risk["음주여부"] == drink) &
-        (df_risk["가족력"] == family)
-    ]
+    st.subheader("📊 분석 결과")
+    category_map = {
+        "암": "암",
+        "뇌": "뇌혈관질환",
+        "심장": "심장질환"
+    }
 
-    if conditions:
-        filtered = filtered[
-            filtered["기저질환"].apply(lambda x: any(cond in x for cond in conditions))
-        ]
-    else:
-        filtered = filtered[filtered["기저질환"] == "없음"]
+    base_risk_dict = {"암": 377, "뇌": 24, "심장": 16.9}
+    max_risk_dict = {"암": 583, "뇌": 238, "심장": 427}
 
-    if not filtered.empty:
-        st.subheader("📊 분석 결과")
+    factor_inputs = {
+        "기저질환": conditions,
+        "흡연여부": [smoke],
+        "음주여부": [drink],
+        "가족력": [family],
+        "직업": [job],
+        "운동 습관": [exercise]
+    }
 
-        category_map = {
-            "암": lambda x: "암" in x,
-            "뇌": lambda x: any(keyword in x for keyword in ["뇌", "뇌졸중", "뇌출혈"]),
-            "심장": lambda x: any(keyword in x for keyword in ["심장", "심근경색", "허혈성"])
-        }
+    for cat, disease_name in category_map.items():
+        adjust_factors = []
+        for kind, values in factor_inputs.items():
+            for value in values:
+                row = df_adjust[(df_adjust["질병군"] == cat) & (df_adjust["항목종류"] == kind) & (df_adjust["항목명"] == value)]
+                if not row.empty:
+                    adjust_factors.append(row["조정계수"].values[0])
 
-        output_blocks = []
+        weights = [1.0] * len(adjust_factors)
+        weighted_sum = sum(a * w for a, w in zip(adjust_factors, weights))
+        final_adjust = round(weighted_sum / sum(weights), 2) if weights else 1.0
+        base_risk = base_risk_dict[cat]
+        final_risk = round(min(base_risk * final_adjust, max_risk_dict[cat]), 1)
 
-        for cat, condition in category_map.items():
-            cat_df = filtered[filtered["질병"].apply(condition)]
-            if not cat_df.empty:
-                top_disease = cat_df.sort_values(by="위험률(1000명당)", ascending=False).iloc[0]
-                disease = top_disease["질병"]
-                base_risk = top_disease["위험률(1000명당)"]
+        treat_info = df_treat[df_treat["질병"] == disease_name]
+        coverage_info = df_coverage[df_coverage["질병"] == disease_name]
 
-                adjust_factors = []
-                for kind, value in zip(
-                    ["기저질환"] * len(conditions) + ["흡연여부", "음주여부", "가족력", "직업", "운동 습관"],
-                    conditions + [smoke, drink, family, job, exercise]
-                ):
-                    row = df_adjust[(df_adjust["항목종류"] == kind) & (df_adjust["항목명"] == value)]
-                    if not row.empty:
-                        adjust_factors.append(row["조정계수"].values[0])
+        d_rate = coverage_info['진단비보유율(%)'].values[0] if not coverage_info.empty else '-'
+        t_rate = coverage_info['치료비보유율(%)'].values[0] if not coverage_info.empty else '-'
+        s_cost = treat_info['수술비용(만원)'].values[0] if not treat_info.empty else '-'
+        r_days = treat_info['회복기간(일)'].values[0] if not treat_info.empty else '-'
+        t_cost = treat_info['평균치료비용(만원)'].values[0] if "평균치료비용(만원)" in treat_info.columns else '-'
 
-                # 기저질환 많을수록 가중치 약화
-                if conditions:
-                    adjusted_weights = [1.0 - 0.1 * (len(conditions)-1)] * len(conditions)
-                else:
-                    adjusted_weights = []
-                remaining_weights = [1.0] * (len(adjust_factors) - len(adjusted_weights))
-                weights = adjusted_weights + remaining_weights
+        if final_risk >= 100:
+            ment = "당신의 몸은 지금 도움을 요청하고 있습니다. 즉시 대비가 필요합니다."
+        elif final_risk >= 30:
+            ment = "위험률이 평균보다 월등히 높습니다. 더 늦기 전에 준비하셔야 합니다."
+        elif final_risk >= 10:
+            ment = "지금이 가장 빠른 시점입니다. 조기에 대비하면 큰 비용을 막을 수 있습니다."
+        elif final_risk >= 3:
+            ment = "준비된 사람만이 위기를 기회로 바꿉니다."
+        else:
+            ment = "위험률은 낮지만, 기본 보장으로 준비하는 경우가 많습니다."
 
-                weighted_sum = sum(a * w for a, w in zip(adjust_factors, weights))
-                final_adjust = round(weighted_sum / sum(weights), 2) if weights else 1.0
-                final_risk = round(base_risk * final_adjust, 1)
-
-                treat_info = df_treat[df_treat["질병"] == disease]
-                coverage_info = df_coverage[df_coverage["질병"] == disease]
-
-                d_rate = coverage_info['진단비보유율(%)'].values[0] if not coverage_info.empty else '-'
-                t_rate = coverage_info['치료비보유율(%)'].values[0] if not coverage_info.empty else '-'
-
-                if final_risk >= 10:
-                    ment = "이 질병은 통계적으로도 매우 높은 빈도로 발생하고 있습니다. 지금 바로 준비가 필요합니다."
-                elif final_risk >= 3:
-                    ment = "생각보다 발생 빈도가 높은 질병입니다. 지금 준비하면 가장 효과적입니다."
-                elif final_risk > 1:
-                    ment = "현재는 낮은 편이지만, 조기 대비는 항상 후회 없는 선택입니다."
-                else:
-                    ment = "위험률은 낮지만, 기본 보장으로 준비하는 경우가 많습니다."
-
-                result_block = f"""
-🔹 **{cat} 위험 - {disease}**
+        st.markdown(f"""
+🔹 **{cat} 위험 - {disease_name}**
 - 기본 위험률: 1000명 중 **{base_risk}명**
 - 보정 위험률 (개인조건 반영): **{final_risk}명** (보정 계수 평균: {final_adjust})
 - 진단비 보유율: {d_rate}% / 치료비 보유율: {t_rate}%
-- 🧾 설득 멘트: {ment}
-                """
-                output_blocks.append(result_block)
-
-        for block in output_blocks:
-            st.markdown(block)
-            st.markdown("---")
-
-    else:
-        st.warning("❗ 입력하신 조건에 해당하는 데이터가 없습니다. 다른 조건을 시도해주세요.")
+- 평균 수술비용: {s_cost}만원 / 평균 회복기간: {r_days}일
+{'- 평균 치료비용: ' + str(t_cost) + '만원' if t_cost != '-' else ''}
+- 🧾: {ment}
+""")
+        st.markdown("---")
