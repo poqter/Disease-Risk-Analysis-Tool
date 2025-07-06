@@ -58,6 +58,7 @@ if run_analysis:
     max_risk_dict = {"암": 583, "뇌": 238, "심장": 427}
 
     factor_inputs = {
+        "연령대": [age_group],
         "기저질환": conditions,
         "흡연여부": [smoke],
         "음주여부": [drink],
