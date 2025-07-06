@@ -11,7 +11,7 @@ st.sidebar.markdown("""
 📅 최종 업데이트: 2025-07-06
 """)
 
-# --- 데이터 불러오기 (예시로 내부 생성) ---
+# --- 데이터 불러오기 ---
 df_risk = pd.read_csv("disease_risk.csv")
 df_adjust = pd.read_csv("disease_adjust.csv")
 df_treat = pd.read_csv("disease_treatment.csv")
@@ -47,7 +47,6 @@ with st.container():
 
 # --- 결과 분석 ---
 if run_analysis:
-    # --- 조건 필터링 ---
     filtered = df_risk[
         (df_risk["연령대"] == age_group) &
         (df_risk["성별"] == gender) &
@@ -63,58 +62,54 @@ if run_analysis:
     else:
         filtered = filtered[filtered["기저질환"] == "없음"]
 
-    # --- 위험률 계산 ---
     if not filtered.empty:
         st.subheader("📊 분석 결과")
 
-        # 상위 3개 질병만 선택 (중복 제거 포함)
-        filtered = (
-            filtered.sort_values(by="위험률(1000명당)", ascending=False)
-            .drop_duplicates(subset="질병", keep="first")
-            .head(3)
-        )
+        category_map = {
+            "암": lambda x: "암" in x,
+            "뇌": lambda x: any(keyword in x for keyword in ["뇌", "뇌졸중", "뇌출혈"]),
+            "심장": lambda x: any(keyword in x for keyword in ["심장", "심근경색", "허혈성"])
+        }
 
+        for cat, condition in category_map.items():
+            cat_df = filtered[filtered["질병"].apply(condition)]
+            if not cat_df.empty:
+                top_disease = cat_df.sort_values(by="위험률(1000명당)", ascending=False).iloc[0]
+                disease = top_disease["질병"]
+                base_risk = top_disease["위험률(1000명당)"]
+                cond_key = top_disease["기저질환"] if top_disease["기저질환"] in df_adjust["기저질환"].values else "없음"
+                adjust_row = df_adjust[df_adjust["기저질환"] == cond_key]
+                adjust = adjust_row["조정계수"].values[0] if not adjust_row.empty else 1.0
+                final_risk = round(base_risk * adjust, 1)
+                risk_multiplier = round(adjust, 1)
 
-        for _, row in filtered.iterrows():
-            disease = row["질병"]
-            base_risk = row["위험률(1000명당)"]
-            cond_key = row["기저질환"] if row["기저질환"] in df_adjust["기저질환"].values else "없음"
-            adjust_row = df_adjust[df_adjust["기저질환"] == cond_key]
-            adjust = adjust_row["조정계수"].values[0] if not adjust_row.empty else 1.0
-            final_risk = round(base_risk * adjust, 1)
-            risk_multiplier = round(adjust, 1)
+                treat_info = df_treat[df_treat["질병"] == disease]
+                coverage_info = df_coverage[df_coverage["질병"] == disease]
 
-            # 수술 정보
-            treat_info = df_treat[df_treat["질병"] == disease]
-            coverage_info = df_coverage[df_coverage["질병"] == disease]
+                d_rate = coverage_info['진단비보유율(%)'].values[0] if not coverage_info.empty else '-'
+                t_rate = coverage_info['치료비보유율(%)'].values[0] if not coverage_info.empty else '-'
 
-            # 멘트 자동 생성
-            auto_ment = f"""
+                auto_ment = f"""
 ✅ **{cond_key}** 보유 시, {disease} 위험률은 평균보다 **{risk_multiplier}배** 증가합니다.  
 → 현재 고객님의 예상 위험률은 **1000명 중 {final_risk}명**입니다.
-"""
-            if not coverage_info.empty:
-                d_rate = coverage_info['진단비보유율(%)'].values[0]
-                t_rate = coverage_info['치료비보유율(%)'].values[0]
-                auto_ment += f"""
 📉 평균적으로 고객의 **{d_rate}%**는 해당 질병에 대한 진단비를, **{t_rate}%**는 치료비 특약을 보유하고 있습니다.  
-→ 가입이 늦으면, 가입 자체가 어려워질 수 있습니다.
+→ 가입이 늦으면, 가입 자체가 어려워질 수 있습니다.  
+⚠️ 보험은 건강할 때만 가입할 수 있습니다. 지금이 가장 빠른 시점입니다.
 """
-            auto_ment += "\n⚠️ 보험은 건강할 때만 가입할 수 있습니다. 지금이 가장 빠른 시점입니다."
 
-            st.markdown(f"""
-            ### 🩺 {disease}
-            - 기본 위험률: **1000명 중 {base_risk}명**
-            - 보정 위험률 (기저질환 반영): **{final_risk}명**
-            - 수술명: {treat_info['대표수술'].values[0] if not treat_info.empty else '정보 없음'}
-            - 수술등급: {treat_info['수술등급'].values[0] if not treat_info.empty else '-'}등급
-            - 평균 수술비: {treat_info['수술비용(만원)'].values[0] if not treat_info.empty else '-'}만원
-            - 평균 회복기간: {treat_info['평균회복기간(일)'].values[0] if not treat_info.empty else '-'}일
-            - 진단비 보유율: {d_rate if not coverage_info.empty else '-'}%
-            - 치료비 보유율: {t_rate if not coverage_info.empty else '-'}%
+                st.markdown(f"""
+                ### 🩺 {cat} 위험 - {disease}
+                - 기본 위험률: **1000명 중 {base_risk}명**
+                - 보정 위험률 (기저질환 반영): **{final_risk}명**
+                - 수술명: {treat_info['대표수술'].values[0] if not treat_info.empty else '정보 없음'}
+                - 수술등급: {treat_info['수술등급'].values[0] if not treat_info.empty else '-'}등급
+                - 평균 수술비: {treat_info['수술비용(만원)'].values[0] if not treat_info.empty else '-'}만원
+                - 평균 회복기간: {treat_info['평균회복기간(일)'].values[0] if not treat_info.empty else '-'}일
+                - 진단비 보유율: {d_rate}%
+                - 치료비 보유율: {t_rate}%
 
-            ---
-            {auto_ment}
-            """)
+                ---
+                {auto_ment}
+                """)
     else:
         st.warning("❗ 입력하신 조건에 해당하는 데이터가 없습니다. 다른 조건을 시도해주세요.")
