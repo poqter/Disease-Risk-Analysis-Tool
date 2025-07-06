@@ -89,17 +89,6 @@ if run_analysis:
         r_days = treat_info['회복기간(일)'].values[0] if not treat_info.empty else '-'
         t_cost = treat_info['평균치료비용(만원)'].values[0] if "평균치료비용(만원)" in treat_info.columns else '-'
 
-        if final_risk >= 100:
-            ment = "당신의 몸은 지금 도움을 요청하고 있습니다. 즉시 대비가 필요합니다."
-        elif final_risk >= 30:
-            ment = "위험률이 평균보다 월등히 높습니다. 더 늦기 전에 준비하셔야 합니다."
-        elif final_risk >= 10:
-            ment = "지금이 가장 빠른 시점입니다. 조기에 대비하면 큰 비용을 막을 수 있습니다."
-        elif final_risk >= 3:
-            ment = "준비된 사람만이 위기를 기회로 바꿉니다."
-        else:
-            ment = "위험률은 낮지만, 기본 보장으로 준비하는 경우가 많습니다."
-
         st.markdown(f"""
 🔹 **{cat} 위험 - {disease_name}**
 - 기본 위험률: 1000명 중 **{base_risk}명**
